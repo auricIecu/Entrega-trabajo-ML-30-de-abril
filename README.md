@@ -8,7 +8,7 @@
 
 ## 🧠 La Ciencia Detrás de la Magia
 
-A diferencia de los "gurús" de YouTube o las predicciones basadas en astrología financiera, BitSignal utiliza:
+BitSignal utiliza:
 
 - **Machine Learning Avanzado**: Un algoritmo Random Forest entrenado con datos históricos reales
 - **Análisis Multidimensional**: 6 variables clave convertidas en componentes principales
