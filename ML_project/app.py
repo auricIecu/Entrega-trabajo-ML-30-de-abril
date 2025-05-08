@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime, timedelta
 import yfinance as yf
+from data_updater import update_dataset, get_last_update_time
 
 # Configuración de la página
 st.set_page_config(
@@ -26,10 +27,20 @@ def centered_header(text, level=1):
         return st.markdown(f"<p style='text-align: center; font-size: 20px;'>{text}</p>", unsafe_allow_html=True)
 
 # Funciones auxiliares
-@st.cache_data
+# Replace your current load_data function with this one
+@st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_data():
-    """Cargar el dataframe procesado"""
-    return pd.read_csv('data/df_selected.csv')
+    """Cargar el dataframe procesado y actualizarlo si es necesario"""
+    try:
+        with st.spinner("Verificando actualizaciones de datos..."):
+            df, updated = update_dataset()
+            if updated:
+                st.success("¡Datos actualizados con éxito!")
+            return df
+    except Exception as e:
+        st.error(f"Error al actualizar datos: {e}")
+        # Fall back to loading the existing file
+        return pd.read_csv('data/df_selected.csv')
 
 @st.cache_resource
 def load_model():
@@ -46,18 +57,37 @@ def get_bitcoin_historical_data():
     """Obtener datos históricos de Bitcoin para graficar"""
     return yf.Ticker("BTC-USD").history(period="6mo")
 
-def prepare_features_for_prediction(price):
-    """Preparar features para la predicción con el modelo"""
+def prepare_features_for_prediction(current_price):
+    """Preparar features para la predicción con el modelo usando datos históricos apropiados"""
+    # Obtener datos de ayer y hoy para calcular cambios
+    btc_data = yf.Ticker("BTC-USD").history(period="2d")
+    qqq_data = yf.Ticker("QQQ").history(period="2d")
+    vix_data = yf.Ticker("^VIX").history(period="2d")
+    
+    # Calcular cambio porcentual en Bitcoin
+    if len(btc_data) >= 2:
+        btc_change = ((btc_data['Close'].iloc[-1] - btc_data['Close'].iloc[-2]) / 
+                      btc_data['Close'].iloc[-2]) * 100
+    else:
+        btc_change = 0
+    
+    # Obtener dificultad de Bitcoin desde el módulo data_updater
+    try:
+        from data_updater import get_bitcoin_difficulty
+        difficulty = get_bitcoin_difficulty() or 0
+    except:
+        difficulty = 0
+    
     features = {
-        'close_btc': price,
-        'close_qqq': yf.Ticker("QQQ").history(period="1d")['Close'].iloc[-1],
-        'difficulty': 0,  # Necesitarías una API para esto
-        'close_VIX': yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1],
-        'volume_qqq': yf.Ticker("QQQ").history(period="1d")['Volume'].iloc[-1],
-        'btc_change': 0  # Se calcularía con datos históricos
+        'close_btc': current_price,
+        'close_qqq': qqq_data['Close'].iloc[-1],
+        'difficulty': difficulty,
+        'close_VIX': vix_data['Close'].iloc[-1],  # Corregido de Volume a Close
+        'volume_qqq': qqq_data['Volume'].iloc[-1],
+        'btc_change': btc_change
     }
+    
     return pd.DataFrame([features])
-
 # Cargar datos y modelo
 df = load_data()
 model = load_model()
@@ -84,6 +114,22 @@ if page == "home":
     Esta aplicación utiliza machine learning para predecir el movimiento del precio de Bitcoin para el día siguiente.
     </p>
     """, unsafe_allow_html=True)
+    
+    # ADD THE UPDATE STATUS CODE RIGHT HERE ↓
+    # Mostrar información sobre la actualización de datos
+    last_update = get_last_update_time()
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        st.markdown("<div style='background-color:#f0f2f6; padding:12px; border-radius:5px; text-align:center;'>", unsafe_allow_html=True)
+        st.markdown(f"**Última actualización de datos:** {last_update}")
+        
+        # Botón para actualizar datos manualmente
+        if st.button("🔄 Actualizar datos"):
+            st.cache_data.clear()
+            st.rerun()
+            
+        st.markdown("</div>", unsafe_allow_html=True)
+    # END OF ADDED CODE
     
     # SECCIÓN PRINCIPAL - GRÁFICO DE PRECIO
     centered_header("Precio actual de Bitcoin", level=2)
@@ -220,10 +266,15 @@ elif page == "model":
         current_price = get_current_bitcoin_price()
         X_pred = prepare_features_for_prediction(current_price)
         
+# Reemplaza las líneas 285-295 con esto:
+
         if hasattr(model[-1], 'feature_importances_'):
             importances = model[-1].feature_importances_
-            feature_names = X_pred.columns
             
+            # Crear nombres de componentes PCA basados en el número de importancias disponibles
+            feature_names = [f'Componente PCA {i+1}' for i in range(len(importances))]
+            
+            # Ahora siempre coincidirán en longitud
             importance_df = pd.DataFrame({
                 'Feature': feature_names,
                 'Importance': importances
@@ -231,8 +282,25 @@ elif page == "model":
             
             fig, ax = plt.subplots(figsize=(10, 6))
             sns.barplot(x='Importance', y='Feature', data=importance_df, ax=ax)
-            plt.title('Importancia de las características')
+            plt.title('Importancia de los componentes PCA')
             st.pyplot(fig)
+            
+            # Información adicional sobre los componentes
+            st.info(f"""
+            **Nota sobre el modelo:** El algoritmo utiliza Análisis de Componentes Principales (PCA) que transforma las 6 características originales en {len(importances)} componentes principales que capturan el 90% de la varianza en los datos.
+
+            **Las 6 características originales utilizadas son:**
+            - **close_btc**: Precio de cierre de Bitcoin - Representa el valor actual de la criptomoneda
+            - **close_qqq**: Precio del índice NASDAQ-100 (QQQ) - Indica la situación del sector tecnológico
+            - **difficulty**: Dificultad de minería de Bitcoin - Refleja la complejidad computacional de minar nuevos bloques
+            - **close_VIX**: Índice de volatilidad - También conocido como "índice del miedo", mide la incertidumbre del mercado
+            - **volume_qqq**: Volumen de negociación del QQQ - Indica la actividad del mercado tecnológico
+            - **btc_change**: Cambio porcentual en el precio de Bitcoin - Representa la tendencia reciente
+
+            Estas características se combinan matemáticamente en {len(importances)} componentes principales que capturan los patrones más significativos para la predicción.
+            """)
+        else:
+            st.write("La importancia de features no está disponible para este modelo")
             
             # Texto explicativo sobre importancia de características
             st.markdown("""
@@ -246,7 +314,5 @@ elif page == "model":
                 <p>Esto nos ayuda a entender qué factores del mercado son más relevantes para predecir si el precio del Bitcoin subirá, bajará o se mantendrá estable.</p>
             </div>
             """, unsafe_allow_html=True)
-        else:
-            st.write("La importancia de features no está disponible para este modelo")
     except Exception as e:
         st.write(f"Error mostrando importancia de features: {e}")
