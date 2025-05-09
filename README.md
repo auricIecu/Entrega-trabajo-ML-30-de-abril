@@ -102,12 +102,6 @@ Mediante un sofisticado Análisis de Componentes Principales (PCA), estas variab
 
 > "Algunos confían en las líneas de tendencia, otros en los patrones de velas... nosotros preferimos la ciencia de datos y un bosque aleatorio bien entrenado."
 
-## ⚠️ Aviso Legal (Porque los Abogados También Invierten)
-
-BitSignal es una herramienta de asistencia para inversiones. Las predicciones, aunque basadas en modelos estadísticos sólidos, no garantizan resultados futuros. La mejor estrategia combina nuestras señales con tu propio juicio. Como dicen los veteranos de las criptomonedas: "Don't trust, verify" (No confíes, verifica).
-
----
-
 # 🚀 ¿Listo para navegar el volátil mar de las criptomonedas con datos, no con emociones?
 
 **BitSignal**: Donde la ciencia de datos se encuentra con la inversión inteligente.
